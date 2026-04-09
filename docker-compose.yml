@@ -1,0 +1,40 @@
+services:
+  app:
+    build: .
+    container_name: wa-gateway
+    env_file: .env
+    ports:
+      - "${PORT:-3000}:3000"
+    environment:
+      - NODE_ENV=production
+      - DB_PATH=/app/data/gateway.db
+      - SESSIONS_DIR=/app/sessions
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+    volumes:
+      - ./data:/app/data
+      - ./sessions:/app/sessions
+    depends_on:
+      - redis
+    restart: unless-stopped
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  redis:
+    image: redis:alpine
+    container_name: wa-redis
+    command: >
+      sh -c 'if [ -z "$${REDIS_PASSWORD}" ]; then
+        redis-server;
+      else
+        redis-server --requirepass "$${REDIS_PASSWORD}";
+      fi'
+    volumes:
+      - redis_data:/data
+    restart: unless-stopped
+
+volumes:
+  redis_data:

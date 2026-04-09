@@ -1,0 +1,22 @@
+node_modules/
+.env
+
+# Baileys sessions (berisi credentials pribadi)
+sessions/
+
+# SQLite database
+data/
+
+# Logs
+*.log
+logs/
+
+# PM2
+.pm2/
+
+# Node modules
+node_modules/
+
+# OS
+.DS_Store
+Thumbs.db

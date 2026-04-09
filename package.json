@@ -1,0 +1,40 @@
+{
+  "name": "whatsapp-api-gateway",
+  "version": "1.0.0",
+  "description": "WhatsApp API Gateway Multi Device dengan Baileys, BullMQ, dan SQLite",
+  "main": "src/app.js",
+  "type": "module",
+  "scripts": {
+    "start": "node --no-warnings src/app.js",
+    "dev": "node --no-warnings --watch src/app.js",
+    "up": "docker compose up -d",
+    "down": "docker compose down",
+    "stop": "docker compose stop",
+    "logs": "docker compose logs -f"
+  },
+  "dependencies": {
+    "@hapi/boom": "^10.0.1",
+    "@whiskeysockets/baileys": "^6.7.9",
+    "axios": "^1.6.8",
+    "bullmq": "^5.4.2",
+    "cors": "^2.8.6",
+    "dotenv": "^16.4.5",
+    "express": "^4.18.3",
+    "express-rate-limit": "^7.2.0",
+    "link-preview-js": "^3.0.4",
+    "mime-types": "^2.1.35",
+    "nanoid": "^5.0.7",
+    "node-sqlite3-wasm": "^0.8.55",
+    "pino": "^8.19.0",
+    "pino-pretty": "^11.0.0",
+    "qrcode": "^1.5.3",
+    "socket.io": "^4.7.5",
+    "zod": "^3.22.4"
+  },
+  "devDependencies": {
+    "nodemon": "^3.1.0"
+  },
+  "engines": {
+    "node": ">=20.0.0"
+  }
+}

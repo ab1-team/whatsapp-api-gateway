@@ -25,7 +25,7 @@ export function setupWebSocket(io) {
 
     // Allow master key to connect to any device room
     if (key === masterKey) {
-      socket.deviceId   = device_id;
+      socket.deviceId   = device_id || 'all'; // Default to 'all' if not provided
       socket.isMasterKey = true;
       return next();
     }
@@ -49,8 +49,12 @@ export function setupWebSocket(io) {
     // Join device-specific room so events are delivered to the right clients
     socket.join(`device:${deviceId}`);
 
+    // If master key, also join global room to receive logs for ALL devices
+    if (socket.isMasterKey) {
+      socket.join('global:logs');
+    }
+
     // Immediately send current state to the newly connected client
-    const client = deviceManager.get(deviceId);
     if (client) {
       // Send current status
       socket.emit('status', { device_id: deviceId, status: client.status });
@@ -75,7 +79,7 @@ export function setupWebSocket(io) {
           name:         client.deviceName,
         });
       }
-    } else {
+    } else if (deviceId !== 'all') {
       socket.emit('status', { device_id: deviceId, status: 'not_loaded' });
     }
 

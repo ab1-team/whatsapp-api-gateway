@@ -28,9 +28,9 @@ services:
     container_name: wa-redis
     command: >
       sh -c 'if [ -z "$${REDIS_PASSWORD}" ]; then
-        redis-server;
+        redis-server --appendonly yes;
       else
-        redis-server --requirepass "$${REDIS_PASSWORD}";
+        redis-server --requirepass "$${REDIS_PASSWORD}" --appendonly yes;
       fi'
     volumes:
       - redis_data:/data

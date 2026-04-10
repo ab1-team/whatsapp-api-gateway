@@ -158,11 +158,14 @@ export class WhatsAppClient {
 
       this._setStatus('connected');
 
-      this.io.to(`device:${this.deviceId}`).emit('ready', {
-        device_id:    this.deviceId,
-        phone_number: this.phoneNumber,
-        name:         this.deviceName,
-      });
+      this.io
+        .to(`device:${this.deviceId}`)
+        .to('global:logs')
+        .emit('ready', {
+          device_id:    this.deviceId,
+          phone_number: this.phoneNumber,
+          name:         this.deviceName,
+        });
 
       this._log.info({ phone: this.phoneNumber }, 'Device ready ✓');
     }
@@ -227,10 +230,13 @@ export class WhatsAppClient {
   _setStatus(status) {
     this.status = status;
     WhatsAppClient.#stmtUpdateDevice.run(status, this.phoneNumber, status, this.deviceId);
-    this.io.to(`device:${this.deviceId}`).emit('status', {
-      device_id: this.deviceId,
-      status,
-    });
+    this.io
+      .to(`device:${this.deviceId}`)
+      .to('global:logs')
+      .emit('status', {
+        device_id: this.deviceId,
+        status,
+      });
   }
 
   _scheduleReconnect() {

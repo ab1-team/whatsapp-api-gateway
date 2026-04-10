@@ -135,6 +135,19 @@ const worker = new Worker(
     stmts.upsertDaily.run(deviceId, todayDate());
     stmts.updateLog.run('sent', null, 'sent', logId);
 
+    // 6. Push real-time notification (Minimalist: no message content)
+    if (deviceManager.io) {
+      deviceManager.io
+        .to(`device:${deviceId}`)
+        .to('global:logs')
+        .emit('message_sent', {
+          logId,
+          deviceId,
+          recipient: to,
+          status: 'sent'
+        });
+    }
+
     logger.info({ deviceId, to, type, context: 'queue' }, 'Message sent ✓');
   },
   {
@@ -158,6 +171,20 @@ worker.on('failed', (job, err) => {
   if (job?.data?.logId) {
     initStmts();
     stmts.updateLog.run('failed', err.message, 'failed', job.data.logId);
+
+    // Push real-time notification for failure
+    if (deviceManager.io) {
+      deviceManager.io
+        .to(`device:${job.data.deviceId}`)
+        .to('global:logs')
+        .emit('message_failed', {
+          logId:      job.data.logId,
+          deviceId:   job.data.deviceId,
+          recipient:  job.data.to,
+          status:     'failed',
+          error:      err.message
+        });
+    }
   }
 });
 
@@ -209,9 +236,42 @@ export async function enqueueMessage(deviceId, to, content, type) {
     logger.warn({ deviceId, to, context: 'queue' }, 'Redis unavailable, sending directly');
     const client = deviceManager.get(deviceId);
     if (!client) throw new Error(`Device ${deviceId} not loaded`);
-    await sleep(randomDelay());
-    await client.sendMessage(to, content);
-    stmts.updateLog.run('sent', null, 'sent', logId);
+
+    try {
+      await sleep(randomDelay());
+      await client.sendMessage(to, content);
+      stmts.updateLog.run('sent', null, 'sent', logId);
+
+      // Push real-time notification even in fallback mode
+      if (deviceManager.io) {
+        deviceManager.io
+          .to(`device:${deviceId}`)
+          .to('global:logs')
+          .emit('message_sent', {
+            logId,
+            deviceId,
+            recipient: to,
+            status: 'sent'
+          });
+      }
+    } catch (sendErr) {
+      stmts.updateLog.run('failed', sendErr.message, 'failed', logId);
+      
+      // Push failure notification in fallback mode
+      if (deviceManager.io) {
+        deviceManager.io
+          .to(`device:${deviceId}`)
+          .to('global:logs')
+          .emit('message_failed', {
+            logId,
+            deviceId,
+            recipient: to,
+            status: 'failed',
+            error: sendErr.message
+          });
+      }
+      throw sendErr;
+    }
     return { logId, jobId: null, queued: false };
   }
 }

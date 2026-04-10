@@ -17,8 +17,10 @@ class DeviceManager {
     /** @type {import('socket.io').Server|null} */
     this.io = null;
     this._log = logger.child({ context: 'device-manager' });
+  }
 
-    // Prepared statements (local to class)
+  #initStmts() {
+    if (this.#stmtAllActive) return;
     this.#stmtAllActive = db.prepare('SELECT id, name FROM devices WHERE is_active = 1');
     this.#stmtAllIds    = db.prepare('SELECT id FROM devices');
     this.#stmtFindByName = db.prepare('SELECT * FROM devices WHERE name = ? AND is_active = 1 LIMIT 1');
@@ -45,6 +47,7 @@ class DeviceManager {
       this.cleanupAbandonedDevices(60);
     }, 60 * 60 * 1000);
 
+    this.#initStmts();
     const devices = this.#stmtAllActive.all();
     this._log.info({ count: devices.length }, 'Loading registered devices…');
 
@@ -128,6 +131,7 @@ class DeviceManager {
    * Finds an existing device by name.
    */
   getDeviceByName(name) {
+    this.#initStmts();
     return this.#stmtFindByName.get(name);
   }
 
@@ -192,6 +196,7 @@ class DeviceManager {
       if (!existsSync(sessionsDir)) return;
 
       const folders     = readdirSync(sessionsDir);
+      this.#initStmts();
       const dbDeviceIds = new Set(this.#stmtAllIds.all().map(d => d.id));
 
       for (const folder of folders) {

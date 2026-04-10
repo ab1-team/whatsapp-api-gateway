@@ -1,13 +1,19 @@
 import db from '../database/db.js';
 import { config } from '../config/index.js';
 
-const stmtDevice = db.prepare(
-  'SELECT id, name, api_key, is_active FROM devices WHERE id = ? AND api_key = ? AND is_active = 1'
-);
-
-const stmtDeviceByKey = db.prepare(
-  'SELECT id, name, api_key, is_active FROM devices WHERE api_key = ? AND is_active = 1'
-);
+let stmts = null;
+function getStmts() {
+  if (stmts) return stmts;
+  stmts = {
+    device: db.prepare(
+      'SELECT id, name, api_key, is_active FROM devices WHERE id = ? AND api_key = ? AND is_active = 1'
+    ),
+    deviceByKey: db.prepare(
+      'SELECT id, name, api_key, is_active FROM devices WHERE api_key = ? AND is_active = 1'
+    ),
+  };
+  return stmts;
+}
 
 /**
  * Middleware: requires the master API key.
@@ -38,10 +44,10 @@ export function requireDeviceKey(req, res, next) {
 
   let device;
   if (deviceId) {
-    device = stmtDevice.get(deviceId, apiKey);
+    device = getStmts().device.get(deviceId, apiKey);
   } else {
     // Allow lookup by key alone (API key is globally unique per device)
-    device = stmtDeviceByKey.get(apiKey);
+    device = getStmts().deviceByKey.get(apiKey);
   }
 
   if (!device) {

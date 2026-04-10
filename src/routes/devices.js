@@ -28,28 +28,33 @@ const updateWebhookSchema = z.object({
 
 // ─── Prepared statements ──────────────────────────────────────────────────────
 
-const stmtInsertDevice = db.prepare(`
-  INSERT INTO devices (id, name, api_key, webhook_url, webhook_events)
-  VALUES (?, ?, ?, ?, ?)
-`);
-
-const stmtAllDevices  = db.prepare('SELECT * FROM devices ORDER BY created_at DESC');
-const stmtOneDevice   = db.prepare('SELECT * FROM devices WHERE id = ?');
-const stmtDeleteDevice = db.prepare('UPDATE devices SET is_active = 0 WHERE id = ?');
-const stmtUpdateWebhook = db.prepare(`
-  UPDATE devices
-  SET webhook_url = COALESCE(?, webhook_url),
-      webhook_events = COALESCE(?, webhook_events),
-      updated_at = datetime('now')
-  WHERE id = ?
-`);
-
-const stmtMessageLogs = db.prepare(`
-  SELECT * FROM message_logs
-  WHERE device_id = ?
-  ORDER BY queued_at DESC
-  LIMIT 50
-`);
+let stmts = null;
+function getStmts() {
+  if (stmts) return stmts;
+  stmts = {
+    insertDevice: db.prepare(`
+      INSERT INTO devices (id, name, api_key, webhook_url, webhook_events)
+      VALUES (?, ?, ?, ?, ?)
+    `),
+    allDevices:   db.prepare('SELECT * FROM devices ORDER BY created_at DESC'),
+    oneDevice:    db.prepare('SELECT * FROM devices WHERE id = ?'),
+    deleteDevice: db.prepare('UPDATE devices SET is_active = 0 WHERE id = ?'),
+    updateWebhook: db.prepare(`
+      UPDATE devices
+      SET webhook_url = COALESCE(?, webhook_url),
+          webhook_events = COALESCE(?, webhook_events),
+          updated_at = datetime('now')
+      WHERE id = ?
+    `),
+    messageLogs: db.prepare(`
+      SELECT * FROM message_logs
+      WHERE device_id = ?
+      ORDER BY queued_at DESC
+      LIMIT 50
+    `),
+  };
+  return stmts;
+}
 
 // ─── Routes ───────────────────────────────────────────────────────────────────
 
@@ -100,7 +105,7 @@ router.post('/', requireMasterKey, validate(createDeviceSchema), async (req, res
     const id      = nanoid(12);
     const apiKey  = `wag_${nanoid(32)}`;
 
-    stmtInsertDevice.run(id, name, apiKey, webhook_url ?? null, JSON.stringify(webhook_events));
+    getStmts().insertDevice.run(id, name, apiKey, webhook_url ?? null, JSON.stringify(webhook_events));
 
     // Start the WhatsApp client in background
     await deviceManager.registerDevice(id, name);
@@ -132,7 +137,7 @@ router.post('/', requireMasterKey, validate(createDeviceSchema), async (req, res
  */
 router.get('/', requireMasterKey, (_req, res) => {
   try {
-    const dbDevices   = stmtAllDevices.all();
+    const dbDevices   = getStmts().allDevices.all();
     const runtimeInfo = Object.fromEntries(
       deviceManager.getAllInfo().map((d) => [d.id, d])
     );
@@ -155,7 +160,7 @@ router.get('/', requireMasterKey, (_req, res) => {
  */
 router.get('/:id', requireMasterOrDeviceKey, (req, res) => {
   const { id } = req.params;
-  const device = stmtOneDevice.get(id);
+  const device = getStmts().oneDevice.get(id);
   if (!device) return res.status(404).json({ success: false, message: 'Device not found' });
 
   const runtimeClient = deviceManager.get(id);
@@ -176,11 +181,11 @@ router.get('/:id', requireMasterOrDeviceKey, (req, res) => {
  */
 router.delete('/:id', requireMasterKey, async (req, res) => {
   const { id } = req.params;
-  const device = stmtOneDevice.get(id);
+  const device = getStmts().oneDevice.get(id);
   if (!device) return res.status(404).json({ success: false, message: 'Device not found' });
 
   try {
-    stmtDeleteDevice.run(id);
+    getStmts().deleteDevice.run(id);
     await deviceManager.remove(id);
     logger.info({ deviceId: id, context: 'devices' }, 'Device deleted');
     return res.json({ success: true, message: 'Device deleted and session cleared' });
@@ -232,7 +237,7 @@ router.patch('/:id/webhook', requireMasterOrDeviceKey, validate(updateWebhookSch
   const { id } = req.params;
   const { webhook_url, webhook_events } = req.body;
   try {
-    stmtUpdateWebhook.run(
+    getStmts().updateWebhook.run(
       webhook_url ?? null,
       webhook_events ? JSON.stringify(webhook_events) : null,
       id
@@ -265,7 +270,7 @@ router.delete('/cleanup/abandoned', requireMasterKey, async (req, res) => {
  */
 router.get('/:id/logs', requireMasterOrDeviceKey, (req, res) => {
   const { id } = req.params;
-  const logs = stmtMessageLogs.all(id);
+  const logs = getStmts().messageLogs.all(id);
   return res.json({ success: true, count: logs.length, logs });
 });
 

@@ -24,29 +24,34 @@ const redisConnection = {
   },
 };
 
-// ─── Prepared statements ───────────────────────────────────────────────────────
-
-const stmtInsertLog = db.prepare(`
-  INSERT INTO message_logs (id, device_id, recipient, type, status, queued_at)
-  VALUES (?, ?, ?, ?, 'queued', datetime('now'))
-`);
-
-const stmtUpdateLog = db.prepare(`
-  UPDATE message_logs
-  SET status = ?, error_message = ?, sent_at = CASE WHEN ? = 'sent' THEN datetime('now') ELSE NULL END
-  WHERE id = ?
-`);
-
-const stmtDailyCount = db.prepare(
-  'SELECT count FROM daily_stats WHERE device_id = ? AND date = ?'
-);
-
-const stmtUpsertDaily = db.prepare(`
-  INSERT INTO daily_stats (device_id, date, count) VALUES (?, ?, 1)
-  ON CONFLICT (device_id, date) DO UPDATE SET count = count + 1
-`);
-
 // ─── Helpers ──────────────────────────────────────────────────────────────────
+
+const stmts = {
+  insertLog:   null,
+  updateLog:   null,
+  dailyCount:  null,
+  upsertDaily: null,
+};
+
+function initStmts() {
+  if (stmts.insertLog) return;
+  stmts.insertLog = db.prepare(`
+    INSERT INTO message_logs (id, device_id, recipient, type, status, queued_at)
+    VALUES (?, ?, ?, ?, 'queued', datetime('now'))
+  `);
+  stmts.updateLog = db.prepare(`
+    UPDATE message_logs
+    SET status = ?, error_message = ?, sent_at = CASE WHEN ? = 'sent' THEN datetime('now') ELSE NULL END
+    WHERE id = ?
+  `);
+  stmts.dailyCount = db.prepare(
+    'SELECT count FROM daily_stats WHERE device_id = ? AND date = ?'
+  );
+  stmts.upsertDaily = db.prepare(`
+    INSERT INTO daily_stats (device_id, date, count) VALUES (?, ?, 1)
+    ON CONFLICT (device_id, date) DO UPDATE SET count = count + 1
+  `);
+}
 
 function sleep(ms) {
   return new Promise((r) => setTimeout(r, ms));
@@ -86,11 +91,11 @@ messageQueue.on('error', (err) => {
 const worker = new Worker(
   'wa-messages',
   async (job) => {
-    const { deviceId, to, content, type, logId } = job.data;
+    initStmts();
 
     // 1. Daily limit check
     if (config.rateLimit.dailyLimit > 0) {
-      const row = stmtDailyCount.get(deviceId, todayDate());
+      const row = stmts.dailyCount.get(deviceId, todayDate());
       if (row && row.count >= config.rateLimit.dailyLimit) {
         throw new Error(
           `Daily limit of ${config.rateLimit.dailyLimit} messages reached for device ${deviceId}`
@@ -126,8 +131,8 @@ const worker = new Worker(
     }
 
     // 5. Update stats & log
-    stmtUpsertDaily.run(deviceId, todayDate());
-    stmtUpdateLog.run('sent', null, 'sent', logId);
+    stmts.upsertDaily.run(deviceId, todayDate());
+    stmts.updateLog.run('sent', null, 'sent', logId);
 
     logger.info({ deviceId, to, type, context: 'queue' }, 'Message sent ✓');
   },
@@ -150,7 +155,8 @@ worker.on('completed', (job) => {
 worker.on('failed', (job, err) => {
   logger.error({ jobId: job?.id, err: err.message, context: 'queue' }, 'Job failed');
   if (job?.data?.logId) {
-    stmtUpdateLog.run('failed', err.message, 'failed', job.data.logId);
+    initStmts();
+    stmts.updateLog.run('failed', err.message, 'failed', job.data.logId);
   }
 });
 
@@ -187,7 +193,8 @@ export async function initQueue() {
  */
 export async function enqueueMessage(deviceId, to, content, type) {
   const logId = nanoid(16);
-  stmtInsertLog.run(logId, deviceId, to, type);
+  initStmts();
+  stmts.insertLog.run(logId, deviceId, to, type);
 
   try {
     const job = await messageQueue.add(
@@ -203,7 +210,7 @@ export async function enqueueMessage(deviceId, to, content, type) {
     if (!client) throw new Error(`Device ${deviceId} not loaded`);
     await sleep(randomDelay());
     await client.sendMessage(to, content);
-    stmtUpdateLog.run('sent', null, 'sent', logId);
+    stmts.updateLog.run('sent', null, 'sent', logId);
     return { logId, jobId: null, queued: false };
   }
 }

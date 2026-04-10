@@ -17,27 +17,32 @@ import { config } from '../config/index.js';
 import { logger, getBaileysLogger } from '../utils/logger.js';
 import db from '../database/db.js';
 
-// Prepared statements (reused for performance)
-const stmtUpdateDevice = db.prepare(`
-  UPDATE devices SET
-    status       = ?,
-    phone_number = COALESCE(?, phone_number),
-    last_seen_at = CASE WHEN ? = 'connected' THEN datetime('now') ELSE last_seen_at END,
-    updated_at   = datetime('now')
-  WHERE id = ?
-`);
-
-const stmtGetWebhook = db.prepare(
-  'SELECT webhook_url, webhook_events FROM devices WHERE id = ?'
-);
-
 export class WhatsAppClient {
+  static #stmtUpdateDevice;
+  static #stmtGetWebhook;
+
+  static #initStmts() {
+    if (this.#stmtUpdateDevice) return;
+    this.#stmtUpdateDevice = db.prepare(`
+      UPDATE devices SET
+        status       = ?,
+        phone_number = COALESCE(?, phone_number),
+        last_seen_at = CASE WHEN ? = 'connected' THEN datetime('now') ELSE last_seen_at END,
+        updated_at   = datetime('now')
+      WHERE id = ?
+    `);
+    this.#stmtGetWebhook = db.prepare(
+      'SELECT webhook_url, webhook_events FROM devices WHERE id = ?'
+    );
+  }
+
   /**
    * @param {string} deviceId
    * @param {string} deviceName
    * @param {import('socket.io').Server} io
    */
   constructor(deviceId, deviceName, io) {
+    WhatsAppClient.#initStmts();
     this.deviceId   = deviceId;
     this.deviceName = deviceName;
     this.io         = io;
@@ -221,7 +226,7 @@ export class WhatsAppClient {
 
   _setStatus(status) {
     this.status = status;
-    stmtUpdateDevice.run(status, this.phoneNumber, status, this.deviceId);
+    WhatsAppClient.#stmtUpdateDevice.run(status, this.phoneNumber, status, this.deviceId);
     this.io.to(`device:${this.deviceId}`).emit('status', {
       device_id: this.deviceId,
       status,

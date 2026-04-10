@@ -4,15 +4,15 @@ import { config } from '../config/index.js';
 import { logger } from '../utils/logger.js';
 import qrcode from 'qrcode';
 
-const stmtDevice = db.prepare(
-  'SELECT id, name, api_key FROM devices WHERE id = ? AND api_key = ? AND is_active = 1'
-);
-
 /**
  * Sets up Socket.io authentication and event handling.
  * @param {import('socket.io').Server} io
  */
 export function setupWebSocket(io) {
+  const stmtDevice = db.prepare(
+    'SELECT id, name, api_key FROM devices WHERE id = ? AND api_key = ? AND is_active = 1'
+  );
+
   // ─── Authentication middleware ──────────────────────────────────────────────
   io.use((socket, next) => {
     const { device_id, api_key } = socket.handshake.query;

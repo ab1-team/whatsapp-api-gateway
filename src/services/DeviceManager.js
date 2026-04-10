@@ -6,23 +6,22 @@ import { config } from '../config/index.js';
 import db from '../database/db.js';
 import { logger } from '../utils/logger.js';
 
-const stmtAllActive = db.prepare('SELECT id, name FROM devices WHERE is_active = 1');
-const stmtAllIds    = db.prepare('SELECT id FROM devices');
-const stmtFindByName = db.prepare('SELECT * FROM devices WHERE name = ? AND is_active = 1 LIMIT 1');
-const stmtDeleteAbandoned = db.prepare(`
-  DELETE FROM devices 
-  WHERE status IN ('disconnected', 'waiting_qr') 
-    AND updated_at < datetime('now', '-' || ? || ' minutes')
-    AND is_active = 1
-`);
-
 class DeviceManager {
+  #stmtAllActive;
+  #stmtAllIds;
+  #stmtFindByName;
+
   constructor() {
     /** @type {Map<string, WhatsAppClient>} */
     this.clients = new Map();
     /** @type {import('socket.io').Server|null} */
     this.io = null;
     this._log = logger.child({ context: 'device-manager' });
+
+    // Prepared statements (local to class)
+    this.#stmtAllActive = db.prepare('SELECT id, name FROM devices WHERE is_active = 1');
+    this.#stmtAllIds    = db.prepare('SELECT id FROM devices');
+    this.#stmtFindByName = db.prepare('SELECT * FROM devices WHERE name = ? AND is_active = 1 LIMIT 1');
   }
 
   // Called once when the server starts
@@ -46,7 +45,7 @@ class DeviceManager {
       this.cleanupAbandonedDevices(60);
     }, 60 * 60 * 1000);
 
-    const devices = stmtAllActive.all();
+    const devices = this.#stmtAllActive.all();
     this._log.info({ count: devices.length }, 'Loading registered devices…');
 
     // Connect all in parallel (non-blocking)
@@ -129,7 +128,7 @@ class DeviceManager {
    * Finds an existing device by name.
    */
   getDeviceByName(name) {
-    return stmtFindByName.get(name);
+    return this.#stmtFindByName.get(name);
   }
 
   /**
@@ -193,7 +192,7 @@ class DeviceManager {
       if (!existsSync(sessionsDir)) return;
 
       const folders     = readdirSync(sessionsDir);
-      const dbDeviceIds = new Set(stmtAllIds.all().map(d => d.id));
+      const dbDeviceIds = new Set(this.#stmtAllIds.all().map(d => d.id));
 
       for (const folder of folders) {
         if (!dbDeviceIds.has(folder)) {

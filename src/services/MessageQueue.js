@@ -91,6 +91,7 @@ messageQueue.on('error', (err) => {
 const worker = new Worker(
   'wa-messages',
   async (job) => {
+    const { deviceId, to, content, type, logId } = job.data;
     initStmts();
 
     // 1. Daily limit check

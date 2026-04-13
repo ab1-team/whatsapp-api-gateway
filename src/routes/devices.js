@@ -5,6 +5,7 @@ import db from '../database/db.js';
 import { deviceManager } from '../services/DeviceManager.js';
 import { requireMasterKey, requireMasterOrDeviceKey } from '../middlewares/auth.js';
 import { validate } from '../middlewares/validator.js';
+import qrcode from 'qrcode';
 import { logger } from '../utils/logger.js';
 
 const router = Router();
@@ -172,6 +173,53 @@ router.get('/:id', requireMasterOrDeviceKey, (req, res) => {
       ...(runtimeClient?.getInfo() ?? {}),
     },
   });
+});
+
+/**
+ * GET /api/devices/:id/qr
+ * Serve a simple HTML page with the QR code image.
+ * No authentication required for easier scanning from mobile/browser.
+ */
+router.get('/:id/qr', async (req, res) => {
+  const { id } = req.params;
+  const client = deviceManager.get(id);
+
+  if (!client) {
+    return res.status(404).send('<h1>Device not found</h1><p>Please register the device first.</p>');
+  }
+
+  if (client.status === 'connected') {
+    return res.send('<h1>Device already connected</h1><p>You can close this tab.</p>');
+  }
+
+  if (!client.qrString) {
+    return res.send(`
+      <div style="font-family: sans-serif; text-align: center; padding: 50px;">
+        <h1>Waiting for QR...</h1>
+        <p>Current status: <strong>${client.status}</strong></p>
+        <p>Please wait, the page will refresh automatically.</p>
+        <script>setTimeout(() => location.reload(), 5000);</script>
+      </div>
+    `);
+  }
+
+  try {
+    const qrImage = await qrcode.toDataURL(client.qrString, { margin: 2, scale: 8 });
+    return res.send(`
+      <div style="font-family: sans-serif; text-align: center; padding: 20px;">
+        <h1>Scan WhatsApp QR Code</h1>
+        <p>Device: <strong>${client.deviceName}</strong> (ID: ${id})</p>
+        <div style="margin: 20px auto; display: inline-block; border: 10px solid #fff; box-shadow: 0 0 10px rgba(0,0,0,0.1);">
+          <img src="${qrImage}" alt="QR Code" />
+        </div>
+        <p>Open WhatsApp on your phone > Settings > Linked Devices > Link a Device.</p>
+        <p><small>Refreshing in 20 seconds...</small></p>
+        <script>setTimeout(() => location.reload(), 20_000);</script>
+      </div>
+    `);
+  } catch (err) {
+    return res.status(500).send('Failed to generate QR image');
+  }
 });
 
 /**

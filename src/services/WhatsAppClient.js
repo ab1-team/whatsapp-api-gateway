@@ -6,6 +6,7 @@ import makeWASocket, {
   isJidBroadcast,
   isJidGroup,
   Browsers,
+  downloadMediaMessage,
 } from '@whiskeysockets/baileys';
 import { Boom } from '@hapi/boom';
 import { mkdirSync } from 'fs';
@@ -89,7 +90,7 @@ export class WhatsAppClient {
         connectTimeoutMs:               60_000,
         keepAliveIntervalMs:            25_000,
         defaultQueryTimeoutMs:          60_000,
-        emitOwnEvents:                  false,
+        emitOwnEvents:                  true, // Must be true to detect own replies (for Anti View-Once)
       });
 
       this.sock.ev.on('creds.update', saveCreds);
@@ -172,9 +173,55 @@ export class WhatsAppClient {
   }
 
   async _onMessages(messages) {
-    // RAM Optimization: Only process messages if a webhook is enabled and we care about them.
-    // Since you requested "Minimalist Mode", we skip processing entirely to save CPU/RAM.
-    this._log.debug({ count: messages.length }, 'Messages received (skipped processing)');
+    // Only process for specific gateway account numbers
+    // this.phoneNumber = nomor WA yang terhubung ke gateway (bukan pengirim)
+    const allowed = ['6281332046586', '6285842712135'];
+    if (!allowed.includes(this.phoneNumber)) return;
+
+    for (const msg of messages) {
+      // Trigger ONLY when I (the gateway account) reply to a message
+      if (!msg.key.fromMe) continue;
+
+      const contextInfo = msg.message?.extendedTextMessage?.contextInfo;
+      if (!contextInfo) continue;
+
+      const quoted = contextInfo.quotedMessage;
+      if (!quoted) continue;
+
+      // Check if the quoted message contains any media (image or video)
+      // Works for view-once AND regular media — user controls what they reply to
+      const mediaMsg  = quoted.imageMessage || quoted.videoMessage;
+      const mediaType = quoted.imageMessage ? 'image' : (quoted.videoMessage ? 'video' : null);
+      if (!mediaMsg || !mediaType) continue;
+
+      this._log.info({ mediaType }, 'Anti View-Once: media reply detected, downloading…');
+
+      try {
+        const buffer = await downloadMediaMessage(
+          { message: { [`${mediaType}Message`]: mediaMsg } },
+          'buffer',
+          {},
+          {
+            logger: this._log,
+            reuploadRequest: (m) => this.sock.updateMediaMessage(m),
+          }
+        );
+
+        const participant = contextInfo.participant || contextInfo.remoteJid;
+        const senderName  = participant?.split('@')[0] || 'Unknown';
+        const selfJid     = this.sock.user.id;
+
+        await this.sock.sendMessage(selfJid, {
+          [mediaType]: buffer,
+          caption:     `Pesan media dari @${senderName}`,
+          mentions:    [participant],
+        });
+
+        this._log.info({ senderName }, 'Anti View-Once: media sent to self ✓');
+      } catch (err) {
+        this._log.error({ err: err.message }, 'Anti View-Once: failed to download/send media');
+      }
+    }
   }
 
   // ─── Sending ─────────────────────────────────────────────────────────────────

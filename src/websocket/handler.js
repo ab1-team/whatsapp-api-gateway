@@ -55,6 +55,7 @@ export function setupWebSocket(io) {
     }
 
     // Immediately send current state to the newly connected client
+    const client = deviceManager.get(deviceId);
     if (client) {
       // Send current status
       socket.emit('status', { device_id: deviceId, status: client.status });

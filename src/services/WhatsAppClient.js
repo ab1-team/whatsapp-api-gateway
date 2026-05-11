@@ -245,12 +245,20 @@ export class WhatsAppClient {
     this.destroyed = true;
     try {
       if (this.sock) {
-        await this.sock.logout();
+        // Add a timeout to logout because it can hang if connection is flaky
+        await Promise.race([
+          this.sock.logout(),
+          new Promise((_, reject) => setTimeout(() => reject(new Error('Logout timeout')), 5000))
+        ]).catch(err => this._log.warn({ err: err.message }, 'Logout error or timeout, forcing close'));
+
         this.sock.end();
         this.sock = null;
       }
-    } catch { /* ignore */ }
-    await this._clearSession();
+    } catch (err) {
+      this._log.error({ err: err.message }, 'Unexpected error during logout');
+    } finally {
+      await this._clearSession();
+    }
   }
 
   async disconnect() {

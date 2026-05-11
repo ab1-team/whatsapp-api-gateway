@@ -61,9 +61,16 @@ class DeviceManager {
    * Registers a new device in DB and starts its WA client.
    */
   async registerDevice(id, name) {
-    if (this.clients.has(id)) {
-      return this.clients.get(id);
+    const existing = this.clients.get(id);
+    if (existing && !existing.destroyed) {
+      return existing;
     }
+    
+    if (existing?.destroyed) {
+      this._log.info({ id }, 'Replacing destroyed client instance');
+      this.clients.delete(id);
+    }
+
     return this._createAndConnect(id, name);
   }
 

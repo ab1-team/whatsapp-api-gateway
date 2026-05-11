@@ -18,6 +18,7 @@ const createDeviceSchema = z.object({
   webhook_events: z
     .array(z.enum(['message', 'status']))
     .default(['message']),
+  force: z.boolean().optional().default(false),
 });
 
 const updateWebhookSchema = z.object({
@@ -72,13 +73,42 @@ router.post('/', requireMasterKey, validate(createDeviceSchema), async (req, res
     const existing = deviceManager.getDeviceByName(name);
     
     if (existing) {
+      const { force } = req.body;
       const runtime = deviceManager.get(existing.id);
       
-      // If already connected, don't allow duplicate registration
+      // If force reset is requested
+      if (force) {
+        logger.info({ deviceId: existing.id, name, context: 'devices' }, 'Force resetting device session');
+        await deviceManager.resetAndConnect(existing.id, name);
+        
+        return res.json({
+          success: true,
+          message: 'Device session force-reset. Connect via WebSocket to get QR.',
+          device: {
+            id:      existing.id,
+            name:    existing.name,
+            api_key: existing.api_key,
+            status:  'connecting',
+            webhook_url:    existing.webhook_url,
+            webhook_events: JSON.parse(existing.webhook_events),
+          },
+        });
+      }
+
+      // Allow ID recovery even if connected
       if (runtime?.status === 'connected' || existing.status === 'connected') {
-        return res.status(409).json({
-          success: false,
-          message: `Device with name "${name}" is already connected.`,
+        logger.info({ deviceId: existing.id, name, context: 'devices' }, 'Device ID recovery for connected device');
+        return res.json({
+          success: true,
+          message: `Device with name "${name}" is already connected. Reusing existing info.`,
+          device: {
+            id:      existing.id,
+            name:    existing.name,
+            api_key: existing.api_key,
+            status:  runtime?.status || existing.status,
+            webhook_url:    existing.webhook_url,
+            webhook_events: JSON.parse(existing.webhook_events),
+          },
         });
       }
 
@@ -267,9 +297,15 @@ router.post('/:id/logout', requireMasterOrDeviceKey, async (req, res) => {
   try {
     const client = deviceManager.get(id);
     if (!client) return res.status(404).json({ success: false, message: 'Device not found in runtime' });
+    
+    const deviceName = client.deviceName;
     await client.logout();
+    
+    // Explicitly remove from runtime map to ensure a fresh instance is created
+    await deviceManager.remove(id);
+
     // Re-initialise so user can scan QR again
-    await deviceManager.registerDevice(id, client.deviceName);
+    await deviceManager.registerDevice(id, deviceName);
     return res.json({ success: true, message: 'Device logged out. Scan QR to reconnect.' });
   } catch (err) {
     return res.status(500).json({ success: false, message: err.message });

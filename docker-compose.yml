@@ -2,9 +2,8 @@ services:
   app:
     build: .
     container_name: wa-gateway
+    # Ports removed to force access via Nginx Proxy Manager (more secure)
     env_file: .env
-    ports:
-      - "${PORT:-3000}:3000"
     environment:
       - NODE_ENV=production
       - DB_PATH=/app/data/gateway.db
@@ -35,6 +34,20 @@ services:
     volumes:
       - redis_data:/data
     restart: unless-stopped
+
+  nginx-proxy:
+    image: 'jc21/nginx-proxy-manager:latest'
+    container_name: wa-nginx-proxy
+    restart: unless-stopped
+    ports:
+      - '80:80'
+      - '81:81'
+      - '443:443'
+    volumes:
+      - ./npm/data:/data
+      - ./npm/letsencrypt:/etc/letsencrypt
+    depends_on:
+      - app
 
 volumes:
   redis_data:

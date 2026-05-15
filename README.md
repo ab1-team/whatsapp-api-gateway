@@ -282,11 +282,14 @@ socket.on('ready', ({ phone_number }) => {
 
 ---
 
-## Deployment (Docker)
+## Deployment (Docker & Reverse Proxy)
 
-Aplikasi ini sudah dilengkapi dengan `Dockerfile` dan `docker-compose.yml` untuk memudahkan deployment.
+Aplikasi ini sudah dilengkapi dengan `Dockerfile` dan `docker-compose.yml` yang mencakup:
+- **WhatsApp API Gateway** (Node.js)
+- **Redis** (Antrian Pesan)
+- **Nginx Proxy Manager** (Reverse Proxy & SSL)
 
-### Menjalankan dengan Docker Compose
+### Menjalankan Stack
 
 1.  Pastikan Docker dan Docker Compose sudah terinstal.
 2.  Edit file `.env` (isi `MASTER_API_KEY`, `REDIS_PASSWORD`, dll).
@@ -294,8 +297,21 @@ Aplikasi ini sudah dilengkapi dengan `Dockerfile` dan `docker-compose.yml` untuk
     ```bash
     docker compose up -d
     ```
-4.  Aplikasi akan berjalan di port `3000` (atau sesuai konfigurasi `PORT` di `.env`).
-5.  Volume `data/` dan `sessions/` akan dibuat secara otomatis untuk persistensi data.
+4.  **Akses Dashboard Reverse Proxy (Nginx Proxy Manager):**
+    - Buka `http://your-server-ip:81`
+    - Login default: `admin@example.com` / `changeme`
+    - Segera ganti password dan email admin.
+
+### Konfigurasi Domain & SSL (HTTPS)
+
+Di dashboard Nginx Proxy Manager:
+1.  Pilih **Proxy Hosts** > **Add Proxy Host**.
+2.  **Domain Names**: Isi domain Anda (contoh: `whatsapp-gateway.sim-sppg.com`).
+3.  **Scheme**: `http`
+4.  **Forward Hostname / IP**: `app` (nama service di docker-compose).
+5.  **Forward Port**: `3000`.
+6.  Tab **SSL**: Pilih `Request a new SSL Certificate` dan centang `Force SSL`.
+7.  Klik **Save**. Aplikasi Anda sekarang dapat diakses via HTTPS secara otomatis.
 
 ---
 

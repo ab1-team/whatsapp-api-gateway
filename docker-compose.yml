@@ -5,7 +5,6 @@ services:
     # Ports removed to force access via Nginx Proxy Manager (more secure)
     env_file: .env
     environment:
-      - MASTER_API_KEY=${MASTER_API_KEY}
       - NODE_ENV=production
       - DB_PATH=/app/data/gateway.db
       - SESSIONS_DIR=/app/sessions

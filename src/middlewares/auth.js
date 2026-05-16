@@ -22,6 +22,11 @@ function getStmts() {
 export function requireMasterKey(req, res, next) {
   const key = req.headers['x-api-key'] || req.query.api_key;
   if (!key || key !== config.masterKey) {
+    if (key) {
+      console.log(`[AUTH_DEBUG] Master Key mismatch! Received: "${key}" (${key.length}), Expected from config: "${config.masterKey}" (${config.masterKey ? config.masterKey.length : 0})`);
+    } else {
+      console.log(`[AUTH_DEBUG] Master Key missing from request!`);
+    }
     return res.status(401).json({ success: false, message: 'Invalid or missing master API key' });
   }
   next();

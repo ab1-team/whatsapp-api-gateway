@@ -1,9 +1,10 @@
-node_modules
+node_modules/
 npm-debug.log
-data
-sessions
+npm/
+data/
+sessions/
 .env
-.git
+.git/
 .gitignore
 Dockerfile
 docker-compose.yml

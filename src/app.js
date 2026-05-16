@@ -16,6 +16,7 @@ import apiRouter            from './routes/index.js';
 // ─── Express app ──────────────────────────────────────────────────────────────
 
 const app    = express();
+app.set('trust proxy', 1);
 const server = createServer(app);
 const io     = new SocketIO(server, {
   cors: { origin: '*' },

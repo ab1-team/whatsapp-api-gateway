@@ -5,6 +5,7 @@ services:
     # Ports removed to force access via Nginx Proxy Manager (more secure)
     env_file: .env
     environment:
+      - MASTER_API_KEY=${MASTER_API_KEY}
       - NODE_ENV=production
       - DB_PATH=/app/data/gateway.db
       - SESSIONS_DIR=/app/sessions
@@ -36,13 +37,13 @@ services:
     restart: unless-stopped
 
   nginx-proxy:
-    image: 'jc21/nginx-proxy-manager:latest'
+    image: "jc21/nginx-proxy-manager:latest"
     container_name: wa-nginx-proxy
     restart: unless-stopped
     ports:
-      - '80:80'
-      - '81:81'
-      - '443:443'
+      - "80:80"
+      - "81:81"
+      - "443:443"
     volumes:
       - ./npm/data:/data
       - ./npm/letsencrypt:/etc/letsencrypt

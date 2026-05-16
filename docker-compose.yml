@@ -21,6 +21,8 @@ services:
       options:
         max-size: "10m"
         max-file: "3"
+    networks:
+      - web-network
 
   redis:
     image: redis:alpine
@@ -34,6 +36,8 @@ services:
     volumes:
       - redis_data:/data
     restart: unless-stopped
+    networks:
+      - web-network
 
   nginx-proxy:
     image: "jc21/nginx-proxy-manager:latest"
@@ -48,6 +52,12 @@ services:
       - ./npm/letsencrypt:/etc/letsencrypt
     depends_on:
       - app
+    networks:
+      - web-network
 
 volumes:
   redis_data:
+
+networks:
+  web-network:
+    external: true

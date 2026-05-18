@@ -158,7 +158,7 @@ const worker = new Worker(
       duration: 60_000,
       groupKey: 'deviceId', // Per-device rate limiting
     },
-    autorun: false, // Don't start automatically — we control startup
+    autorun: true, // Automatically start and handle reconnection robustly
   }
 );
 

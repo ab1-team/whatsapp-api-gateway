@@ -236,7 +236,15 @@ export class WhatsAppClient {
       throw new Error(`Device "${this.deviceId}" is not connected (status: ${this.status})`);
     }
     const jid = this._toJid(to);
-    await this.sock.sendMessage(jid, content);
+    
+    // Add a 15s timeout wrapper to prevent BullMQ workers from hanging permanently
+    // if Baileys deadlocks internally during sending.
+    return Promise.race([
+      this.sock.sendMessage(jid, content),
+      new Promise((_, reject) => 
+        setTimeout(() => reject(new Error('Timed Out (API Level): Baileys sendMessage hung')), 15_000)
+      )
+    ]);
   }
 
   // ─── Lifecycle ────────────────────────────────────────────────────────────────

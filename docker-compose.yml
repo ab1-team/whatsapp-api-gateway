@@ -2,7 +2,6 @@ services:
   app:
     build: .
     container_name: wa-gateway
-    # Ports removed to force access via Nginx Proxy Manager (more secure)
     env_file: .env
     environment:
       - NODE_ENV=production
@@ -14,7 +13,8 @@ services:
       - ./data:/app/data
       - ./sessions:/app/sessions
     depends_on:
-      - redis
+      redis:
+        condition: service_healthy # ← tunggu redis benar-benar siap
     restart: unless-stopped
     logging:
       driver: "json-file"
@@ -36,6 +36,12 @@ services:
     volumes:
       - redis_data:/data
     restart: unless-stopped
+    healthcheck: # ← tambahkan ini
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+      start_period: 5s
     networks:
       - web-network
 
@@ -51,7 +57,8 @@ services:
       - ./npm/data:/data
       - ./npm/letsencrypt:/etc/letsencrypt
     depends_on:
-      - app
+      app:
+        condition: service_started # nginx tidak perlu tunggu app healthy
     networks:
       - web-network
 

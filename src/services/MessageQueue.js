@@ -13,7 +13,7 @@ const redisConnection = {
   password:           config.redis.password || undefined,
   db:                 config.redis.db,
   // Prevent Redis errors from crashing the process
-  enableOfflineQueue: false,
+  enableOfflineQueue: true,
   lazyConnect:        true,
   maxRetriesPerRequest: null, // Required by BullMQ
   retryStrategy: (times) => {

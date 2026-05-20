@@ -1,10 +1,10 @@
-import { WhatsAppClient } from './WhatsAppClient.js';
-import { readdirSync, existsSync } from 'fs';
-import { rm } from 'fs/promises';
-import { join, resolve } from 'path';
-import { config } from '../config/index.js';
-import db from '../database/db.js';
-import { logger } from '../utils/logger.js';
+import { WhatsAppClient } from "./WhatsAppClient.js";
+import { readdirSync, existsSync } from "fs";
+import { rm } from "fs/promises";
+import { join, resolve } from "path";
+import { config } from "../config/index.js";
+import db from "../database/db.js";
+import { logger } from "../utils/logger.js";
 
 class DeviceManager {
   #stmtAllActive;
@@ -16,14 +16,18 @@ class DeviceManager {
     this.clients = new Map();
     /** @type {import('socket.io').Server|null} */
     this.io = null;
-    this._log = logger.child({ context: 'device-manager' });
+    this._log = logger.child({ context: "device-manager" });
   }
 
   #initStmts() {
     if (this.#stmtAllActive) return;
-    this.#stmtAllActive = db.prepare('SELECT id, name FROM devices WHERE is_active = 1');
-    this.#stmtAllIds    = db.prepare('SELECT id FROM devices');
-    this.#stmtFindByName = db.prepare('SELECT * FROM devices WHERE name = ? AND is_active = 1 LIMIT 1');
+    this.#stmtAllActive = db.prepare(
+      "SELECT id, name FROM devices WHERE is_active = 1",
+    );
+    this.#stmtAllIds = db.prepare("SELECT id FROM devices");
+    this.#stmtFindByName = db.prepare(
+      "SELECT * FROM devices WHERE name = ? AND is_active = 1 LIMIT 1",
+    );
   }
 
   // Called once when the server starts
@@ -43,18 +47,28 @@ class DeviceManager {
     await this.cleanupAbandonedDevices(60);
 
     // 3. Setup periodic cleanup every hour
-    setInterval(() => {
-      this.cleanupAbandonedDevices(60);
-    }, 60 * 60 * 1000);
+    setInterval(
+      () => {
+        this.cleanupAbandonedDevices(60);
+      },
+      60 * 60 * 1000,
+    );
 
     this.#initStmts();
     const devices = this.#stmtAllActive.all();
-    this._log.info({ count: devices.length }, 'Loading registered devices…');
+    this._log.info({ count: devices.length }, "Loading registered devices…");
 
-    // Connect all in parallel (non-blocking)
-    await Promise.allSettled(
-      devices.map((d) => this._createAndConnect(d.id, d.name))
-    );
+    // ← Stagger: jangan connect semua bersamaan, beri jeda 3 detik per device
+    for (let i = 0; i < devices.length; i++) {
+      const d = devices[i];
+      if (i > 0) await new Promise((r) => setTimeout(r, 3000));
+      this._createAndConnect(d.id, d.name).catch((err) => {
+        this._log.error(
+          { deviceId: d.id, err: err.message },
+          "Initial connection error",
+        );
+      });
+    }
   }
 
   /**
@@ -65,9 +79,9 @@ class DeviceManager {
     if (existing && !existing.destroyed) {
       return existing;
     }
-    
+
     if (existing?.destroyed) {
-      this._log.info({ id }, 'Replacing destroyed client instance');
+      this._log.info({ id }, "Replacing destroyed client instance");
       this.clients.delete(id);
     }
 
@@ -108,10 +122,13 @@ class DeviceManager {
     try {
       if (existsSync(sessionPath)) {
         await rm(sessionPath, { recursive: true, force: true });
-        this._log.info({ id }, 'Session folder cleared for fresh scan');
+        this._log.info({ id }, "Session folder cleared for fresh scan");
       }
     } catch (err) {
-      this._log.error({ id, err: err.message }, 'Failed to clear session folder');
+      this._log.error(
+        { id, err: err.message },
+        "Failed to clear session folder",
+      );
     }
 
     // 3. Start fresh
@@ -148,36 +165,43 @@ class DeviceManager {
   async cleanupAbandonedDevices(maxAgeMinutes = 60) {
     try {
       const dbPath = resolve(config.sessionsDir);
-      
+
       // Get IDs of abandoned devices BEFORE deleting them from DB
-      const abandoned = db.prepare(`
+      const abandoned = db
+        .prepare(
+          `
         SELECT id FROM devices 
         WHERE status IN ('disconnected', 'waiting_qr') 
           AND updated_at < datetime('now', '-' || ? || ' minutes')
           AND is_active = 1
-      `).all(maxAgeMinutes);
+      `,
+        )
+        .all(maxAgeMinutes);
 
       if (abandoned.length === 0) return;
 
-      this._log.info({ count: abandoned.length, threshold: `${maxAgeMinutes}m` }, 'Cleaning up abandoned devices…');
+      this._log.info(
+        { count: abandoned.length, threshold: `${maxAgeMinutes}m` },
+        "Cleaning up abandoned devices…",
+      );
 
       for (const { id } of abandoned) {
         // Stop runtime client if exists
         await this.remove(id);
-        
+
         // Final DB deletion ( migrations have ON DELETE CASCADE for logs/stats )
-        db.prepare('DELETE FROM devices WHERE id = ?').run(id);
-        
+        db.prepare("DELETE FROM devices WHERE id = ?").run(id);
+
         // Double check session folder removal
         const sessionPath = resolve(join(config.sessionsDir, id));
         if (existsSync(sessionPath)) {
           await rm(sessionPath, { recursive: true, force: true });
         }
       }
-      
-      this._log.info('Cleanup completed');
+
+      this._log.info("Cleanup completed");
     } catch (err) {
-      this._log.error({ err: err.message }, 'Abandoned cleanup failed');
+      this._log.error({ err: err.message }, "Abandoned cleanup failed");
     }
   }
 
@@ -188,7 +212,10 @@ class DeviceManager {
     this.clients.set(id, client);
     // Fire and forget — connection is async
     client.connect().catch((err) => {
-      this._log.error({ deviceId: id, err: err.message }, 'Initial connection error');
+      this._log.error(
+        { deviceId: id, err: err.message },
+        "Initial connection error",
+      );
     });
     return client;
   }
@@ -202,18 +229,21 @@ class DeviceManager {
       const sessionsDir = resolve(config.sessionsDir);
       if (!existsSync(sessionsDir)) return;
 
-      const folders     = readdirSync(sessionsDir);
+      const folders = readdirSync(sessionsDir);
       this.#initStmts();
-      const dbDeviceIds = new Set(this.#stmtAllIds.all().map(d => d.id));
+      const dbDeviceIds = new Set(this.#stmtAllIds.all().map((d) => d.id));
 
       for (const folder of folders) {
         if (!dbDeviceIds.has(folder)) {
-          this._log.warn({ folder, context: 'cleanup' }, 'Removing orphaned session folder');
+          this._log.warn(
+            { folder, context: "cleanup" },
+            "Removing orphaned session folder",
+          );
           await rm(join(sessionsDir, folder), { recursive: true, force: true });
         }
       }
     } catch (err) {
-      this._log.error({ err: err.message }, 'Cleanup sessions failed');
+      this._log.error({ err: err.message }, "Cleanup sessions failed");
     }
   }
 }
